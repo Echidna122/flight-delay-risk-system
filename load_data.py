@@ -27,7 +27,7 @@ df = df.dropna(subset = ["sched_dep_time","actual_dep_time","delay_minutes"])
 
 df['delay_minutes'] = df['delay_minutes'].astype(int)
 
-df = df.head(10000)
+df = df.head(100000)
 
 conn = sqlite3.connect(db_path)
 df.to_sql("flights", conn, if_exists='append', index = False)

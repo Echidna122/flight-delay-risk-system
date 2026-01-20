@@ -2,80 +2,88 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="Flight Delay Dashboard", layout="wide")
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 
-# Load data
+st.set_page_config(page_title="Flight Delay Risk", layout="wide")
+
 conn = sqlite3.connect("airline_ops.db")
 df = pd.read_sql_query("SELECT * FROM flights", conn)
 conn.close()
 
-# Risk classification
-def classify_risk(delay):
-    if delay == 0:
-        return "On Time"
-    elif delay <= 15:
-        return "Low Risk"
-    elif delay <= 30:
-        return "Medium Risk"
-    else:
-        return "High Risk"
-
-df["delay_risk"] = df["delay_minutes"].apply(classify_risk)
 df["flight_date"] = pd.to_datetime(df["flight_date"])
+df["is_delayed"] = (df["delay_minutes"] > 0).astype(int)
 
-# Title
-st.title("✈️ Flight Delay Risk Dashboard")
-st.write("Simple analysis of flight delays using real airline data.")
+df["sched_dep_time"] = pd.to_numeric(df["sched_dep_time"], errors="coerce")
+df["sched_dep_hour"] = (df["sched_dep_time"] // 100).astype("Int64")
+df["day_of_week"] = df["flight_date"].dt.dayofweek
 
-# Metrics
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Flights", len(df))
-col2.metric("Delayed Flights", (df["delay_minutes"] > 0).sum())
-col3.metric("Avg Delay (min)", round(df["delay_minutes"].mean(), 2))
+features = ["airline", "origin", "destination", "sched_dep_hour", "day_of_week"]
+df = df.dropna(subset=features + ["is_delayed"])
+
+X = df[features]
+y = df["is_delayed"]
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("cat", OneHotEncoder(handle_unknown="ignore"), ["airline", "origin", "destination"]),
+        ("num", "passthrough", ["sched_dep_hour", "day_of_week"]),
+    ]
+)
+
+model = Pipeline(
+    steps=[
+        ("preprocessor", preprocessor),
+        ("classifier", LogisticRegression(max_iter=1000)),
+    ]
+)
+
+model.fit(X, y)
+
+st.title("✈️ Flight Delay Risk Prediction")
+st.write("Enter flight details to predict delay risk using historical data.")
 
 st.divider()
 
-# Filters
-st.subheader("Filters")
+with st.form("prediction_form"):
+    airline = st.selectbox("Airline", sorted(df["airline"].unique()))
+    origin = st.selectbox("Origin Airport", sorted(df["origin"].unique()))
+    destination = st.selectbox("Destination Airport", sorted(df["destination"].unique()))
+    sched_dep_hour = st.slider("Scheduled Departure Hour", 0, 23, 12)
+    day_name = st.selectbox(
+        "Day of Week",
+        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    )
 
-airline = st.selectbox(
-    "Select Airline",
-    options=["All"] + sorted(df["airline"].unique().tolist())
-)
+    submit = st.form_submit_button("Predict Delay Risk")
 
-if airline != "All":
-    df = df[df["airline"] == airline]
+if submit:
+    day_map = {
+        "Monday": 0,
+        "Tuesday": 1,
+        "Wednesday": 2,
+        "Thursday": 3,
+        "Friday": 4,
+        "Saturday": 5,
+        "Sunday": 6,
+    }
 
-date_range = st.date_input(
-    "Select Date Range",
-    [df["flight_date"].min().date(), df["flight_date"].max().date()]
-)
+    input_df = pd.DataFrame(
+        [[airline, origin, destination, sched_dep_hour, day_map[day_name]]],
+        columns=features
+    )
 
-df = df[
-    (df["flight_date"].dt.date >= date_range[0]) &
-    (df["flight_date"].dt.date <= date_range[1])
-]
+    prob = model.predict_proba(input_df)[0][1]
 
-st.divider()
+    if prob < 0.3:
+        risk = "Low Risk"
+    elif prob < 0.6:
+        risk = "Medium Risk"
+    else:
+        risk = "High Risk"
 
-# Table
-st.subheader("Flight Records")
-
-st.dataframe(
-    df[
-        [
-            "flight_date",
-            "airline",
-            "origin",
-            "destination",
-            "delay_minutes",
-            "delay_risk"
-        ]
-    ],
-    use_container_width=True,
-    height=450
-)
-
-# Simple chart
-st.subheader("Delay Risk Distribution")
-st.bar_chart(df["delay_risk"].value_counts())
+    st.subheader("Prediction Result")
+    st.write(f"**Delay Probability:** {prob:.2%}")
+    st.write(f"**Predicted Risk Level:** {risk}")
