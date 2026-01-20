@@ -207,3 +207,4 @@ marimo/_lsp/
 __marimo__/
 
 airline_ops.db
+/data/raw
