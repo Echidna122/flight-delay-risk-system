@@ -8,7 +8,7 @@
 
 - Rule-based logic to capture real airline delay factors (peak hours, weather, congestion)
 
-- Light machine learning (logistic regression) to estimate delay probability in an explainable way
+- Light machine learning (~~logistic regression~~ Random Forest Classifier) to estimate delay probability in an explainable way
 
 Instead of relying on complex models, the system focuses on clear logic, strong database usage, and practical system design, similar to real airline operations tools.
 
