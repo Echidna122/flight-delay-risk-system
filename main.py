@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier   # CHANGED
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -44,7 +44,11 @@ preprocessor = ColumnTransformer(
 model = Pipeline(
     steps=[
         ("preprocessor", preprocessor),
-        ("classifier", LogisticRegression(max_iter=1000)),
+        ("classifier", RandomForestClassifier(      # CHANGED
+            n_estimators=200,
+            random_state=42,
+            n_jobs=-1
+        )),
     ]
 )
 
