@@ -2,7 +2,7 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -26,40 +26,57 @@ df = df.dropna(subset=features + ["is_delayed"])
 X = df[features]
 y = df["is_delayed"]
 
-preprocessor = ColumnTransformer(
-    transformers=[
-        ("cat", OneHotEncoder(handle_unknown="ignore"), ["airline", "origin", "destination"]),
-        ("num", "passthrough", ["sched_dep_hour", "day_of_week"]),
-    ]
-)
+@st.cache_resource
+def train_model(X, y):
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ("cat", OneHotEncoder(handle_unknown="ignore"),
+             ["airline", "origin", "destination"]),
+            ("num", "passthrough", ["sched_dep_hour", "day_of_week"]),
+        ]
+    )
 
-model = Pipeline(
-    steps=[
-        ("preprocessor", preprocessor),
-        ("classifier", LogisticRegression(max_iter=1000)),
-    ]
-)
+    model = Pipeline(
+        steps=[
+            ("preprocessor", preprocessor),
+            ("classifier", RandomForestClassifier(
+                n_estimators=200,
+                random_state=42,
+                n_jobs=-1
+            )),
+        ]
+    )
 
-model.fit(X, y)
+    model.fit(X, y)
+    return model
+
+model = train_model(X, y)
 
 st.title("✈️ Flight Delay Risk Prediction")
 st.write("Enter flight details to predict delay risk using historical data.")
 
 st.divider()
 
+airports = sorted(pd.unique(df[["origin", "destination"]].values.ravel()))
+
 with st.form("prediction_form"):
     airline = st.selectbox("Airline", sorted(df["airline"].unique()))
-    origin = st.selectbox("Origin Airport", sorted(df["origin"].unique()))
-    destination = st.selectbox("Destination Airport", sorted(df["destination"].unique()))
+    origin = st.selectbox("Origin Airport", airports)
+    destination_options = [a for a in airports if a != origin]
+    destination = st.selectbox("Destination Airport", destination_options)
     sched_dep_hour = st.slider("Scheduled Departure Hour", 0, 23, 12)
     day_name = st.selectbox(
         "Day of Week",
-        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        ["Monday", "Tuesday", "Wednesday", "Thursday",
+         "Friday", "Saturday", "Sunday"]
     )
-
     submit = st.form_submit_button("Predict Delay Risk")
 
 if submit:
+    if origin == destination:
+        st.error("Origin and destination airports must be different.")
+        st.stop()
+
     day_map = {
         "Monday": 0,
         "Tuesday": 1,
